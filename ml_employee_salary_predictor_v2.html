@@ -1,0 +1,340 @@
+
+<style>
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+</style>
+<div id="root3"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script>
+const {useState}=React;
+const e=React.createElement;
+
+const T=M=>M[0].map((_,j)=>M.map(r=>r[j]));
+const mm=(A,B)=>A.map(r=>B[0].map((_,j)=>r.reduce((s,v,k)=>s+v*B[k][j],0)));
+const inv=M=>{
+  const n=M.length;
+  const a=M.map((row,i)=>[...row,...Array.from({length:n},(_,j)=>+(i===j))]);
+  for(let c=0;c<n;c++){
+    let mx=c;
+    for(let r=c+1;r<n;r++)if(Math.abs(a[r][c])>Math.abs(a[mx][c]))mx=r;
+    [a[c],a[mx]]=[a[mx],a[c]];
+    const p=a[c][c];
+    if(Math.abs(p)<1e-10)return null;
+    a[c]=a[c].map(v=>v/p);
+    for(let r=0;r<n;r++){if(r===c)continue;const f=a[r][c];a[r]=a[r].map((v,j)=>v-f*a[c][j]);}
+  }
+  return a.map(r=>r.slice(n));
+};
+
+const FLOOR=3; // minimum realistic salary ₹3 LPA
+
+const trainModel=recs=>{
+  if(recs.length<7)return null;
+  const X=recs.map(r=>[1,r.experience,r.education,r.skills,r.performance,r.department]);
+  const y=recs.map(r=>[r.salary]);
+  const Xt=T(X);const I=inv(mm(Xt,X));
+  if(!I)return null;
+  const theta=mm(mm(I,Xt),y).map(r=>r[0]);
+  const yMean=y.reduce((s,v)=>s+v[0],0)/y.length;
+  const yp=X.map(row=>row.reduce((s,x,i)=>s+x*theta[i],0));
+  const ssTot=y.reduce((s,v)=>s+(v[0]-yMean)**2,0);
+  const ssRes=y.reduce((s,v,i)=>s+(v[0]-yp[i])**2,0);
+  return{theta,r2:1-ssRes/ssTot,rmse:Math.sqrt(ssRes/y.length)};
+};
+
+// Apply floor so 0-exp prediction is never ₹0
+const predictSalary=(theta,inp)=>
+  Math.max(FLOOR,[1,inp.experience,inp.education,inp.skills,inp.performance,inp.department].reduce((s,x,i)=>s+x*theta[i],0));
+
+let nid=20;
+
+// ── Seed data now includes 0-year freshers so the model learns a proper intercept
+const SEED=[
+  // Freshers — 0 years experience
+  {id:1, experience:0,education:3,skills:3,performance:3,department:1,salary:3},
+  {id:2, experience:0,education:3,skills:5,performance:3,department:4,salary:4},
+  {id:3, experience:0,education:4,skills:5,performance:3,department:4,salary:6},
+  {id:4, experience:0,education:5,skills:6,performance:3,department:4,salary:8},
+  // Junior
+  {id:5, experience:1,education:3,skills:4,performance:3,department:4,salary:6},
+  {id:6, experience:2,education:4,skills:5,performance:3,department:4,salary:9},
+  {id:7, experience:2,education:3,skills:5,performance:3,department:1,salary:7},
+  // Mid
+  {id:8, experience:3,education:3,skills:6,performance:4,department:4,salary:13},
+  {id:9, experience:3,education:4,skills:6,performance:3,department:3,salary:11},
+  {id:10,experience:4,education:3,skills:6,performance:4,department:1,salary:12},
+  {id:11,experience:5,education:4,skills:7,performance:4,department:4,salary:20},
+  {id:12,experience:6,education:4,skills:7,performance:4,department:2,salary:18},
+  // Senior
+  {id:13,experience:7,education:4,skills:8,performance:4,department:4,salary:28},
+  {id:14,experience:8,education:4,skills:8,performance:5,department:3,salary:30},
+  {id:15,experience:9,education:4,skills:8,performance:5,department:4,salary:40},
+  {id:16,experience:10,education:5,skills:9,performance:5,department:5,salary:55},
+  // Lead / exec
+  {id:17,experience:12,education:5,skills:9,performance:5,department:5,salary:75},
+  {id:18,experience:15,education:5,skills:9,performance:5,department:5,salary:90},
+  {id:19,experience:1,education:5,skills:5,performance:3,department:4,salary:8},
+];
+
+const BLANK={experience:"0",education:"3",skills:"5",performance:"3",department:"4",salary:""};
+const FEAT_NAMES=["Intercept","Experience (years)","Education level","Skills score","Performance rating","Department"];
+const FEAT_BARS=["#888780","#185FA5","#534AB7","#0F6E56","#BA7517","#993C1D"];
+const DEPTS={1:"Sales",2:"Marketing",3:"Operations",4:"Engineering",5:"Management"};
+const DEPT_C={1:"#993C1D",2:"#72243E",3:"#854F0B",4:"#185FA5",5:"#534AB7"};
+const EDUS={1:"High school",2:"Diploma",3:"Bachelor's",4:"Master's",5:"PhD / MBA"};
+const PERF_L={1:"Poor",2:"Below avg",3:"Average",4:"Good",5:"Excellent"};
+const PERF_C={1:"var(--color-text-danger)",2:"var(--color-text-warning)",3:"var(--color-text-secondary)",4:"var(--color-text-success)",5:"var(--color-text-success)"};
+
+const Chip=({active,color,onClick,children})=>e("button",{onClick,style:{padding:"5px 12px",fontSize:12,fontWeight:active?500:400,background:active?color:"var(--color-background-secondary)",color:active?"#fff":"var(--color-text-secondary)",border:`0.5px solid ${active?color:"var(--color-border-secondary)"}`,borderRadius:20,cursor:"pointer",whiteSpace:"nowrap"}},children);
+
+const MetricCard=({label,value,icon,color})=>e("div",{style:{background:"var(--color-background-secondary)",borderRadius:"var(--border-radius-md)",padding:"1rem"}},
+  e("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:6}},
+    e("i",{className:`ti ${icon}`,style:{fontSize:16,color},"aria-hidden":"true"}),
+    e("span",{style:{fontSize:12,color:"var(--color-text-secondary)"}},label)
+  ),
+  e("div",{style:{fontSize:22,fontWeight:500,fontFamily:"var(--font-mono)",color:"var(--color-text-primary)"}},value)
+);
+
+function App(){
+  const [records,setRecords]=useState(SEED);
+  const [model,setModel]=useState(null);
+  const [tab,setTab]=useState("data");
+  const [form,setForm]=useState(BLANK);
+  const [editId,setEditId]=useState(null);
+  const [showForm,setShowForm]=useState(false);
+  const [pred,setPred]=useState(null);
+  const [floored,setFloored]=useState(false);
+  const [predIn,setPredIn]=useState({experience:0,education:4,skills:5,performance:3,department:4});
+  const [trainErr,setTrainErr]=useState("");
+
+  const openCreate=()=>{setForm(BLANK);setEditId(null);setShowForm(true);};
+  const openEdit=r=>{setForm({experience:""+r.experience,education:""+r.education,skills:""+r.skills,performance:""+r.performance,department:""+r.department,salary:""+r.salary});setEditId(r.id);setShowForm(true);};
+  const cancelForm=()=>{setShowForm(false);setEditId(null);};
+  const saveRecord=()=>{
+    const entry=Object.fromEntries(Object.entries(form).map(([k,v])=>[k,+v]));
+    if(editId)setRecords(rs=>rs.map(r=>r.id===editId?{...r,...entry}:r));
+    else setRecords(rs=>[...rs,{id:nid++,...entry}]);
+    setShowForm(false);setEditId(null);setModel(null);setPred(null);
+  };
+  const del=id=>{setRecords(rs=>rs.filter(r=>r.id!==id));setModel(null);setPred(null);};
+  const fv=form.experience!==""&&form.skills!==""&&form.salary!==""&&+form.experience>=0&&+form.skills>=1&&+form.salary>0;
+  const handleTrain=()=>{const m=trainModel(records);if(m){setModel(m);setTrainErr("");}else setTrainErr(`Need at least 7 records (have ${records.length}).`);};
+
+  const doPredict=()=>{
+    if(!model)return;
+    const raw=[1,predIn.experience,predIn.education,predIn.skills,predIn.performance,predIn.department].reduce((s,x,i)=>s+x*model.theta[i],0);
+    setFloored(raw<FLOOR);
+    setPred(Math.max(FLOOR,raw));
+  };
+
+  const tdS={padding:"9px 11px",borderTop:"0.5px solid var(--color-border-tertiary)"};
+  const monoS={fontFamily:"var(--font-mono)",fontSize:13};
+  const tabBtn=(t,icon,label)=>e("button",{key:t,onClick:()=>setTab(t),style:{display:"flex",alignItems:"center",gap:6,padding:"10px 18px",fontSize:13,fontWeight:tab===t?500:400,color:tab===t?"var(--color-text-primary)":"var(--color-text-secondary)",background:"none",border:"none",borderBottom:tab===t?"2px solid var(--color-text-primary)":"2px solid transparent",cursor:"pointer",fontFamily:"var(--font-sans)"}},
+    e("i",{className:`ti ${icon}`,style:{fontSize:15},"aria-hidden":"true"}),label);
+
+  const SliderRow=({k,label,min,max,step,fmt})=>e("div",{style:{marginBottom:"0.875rem"}},
+    e("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:4}},
+      e("label",{style:{fontSize:12,color:"var(--color-text-secondary)"}},label),
+      e("span",{style:{fontSize:13,fontWeight:500,fontFamily:"var(--font-mono)",color:"var(--color-text-primary)"}},fmt?fmt(predIn[k]):predIn[k])
+    ),
+    e("input",{type:"range",min,max,step,value:predIn[k],onChange:ev=>{setPredIn(p=>({...p,[k]:+ev.target.value}));setPred(null);},style:{width:"100%"}})
+  );
+
+  return e("div",{style:{padding:"1rem 0"}},
+    e("h2",{className:"sr-only"},"ML employee salary predictor — CRUD database with linear regression"),
+
+    e("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:"1.5rem"}},
+      e(MetricCard,{label:"Employees",value:records.length,icon:"ti-users",color:"var(--color-text-info)"}),
+      e(MetricCard,{label:"Model",value:model?"Trained":"Untrained",icon:"ti-brain",color:model?"var(--color-text-success)":"var(--color-text-tertiary)"}),
+      e(MetricCard,{label:"R² score",value:model?(model.r2*100).toFixed(1)+"%":"—",icon:"ti-chart-line",color:model&&model.r2>0.9?"var(--color-text-success)":"var(--color-text-tertiary)"}),
+      e(MetricCard,{label:"Predicted salary",value:pred!==null?"₹"+pred.toFixed(1)+" LPA":"—",icon:"ti-currency-rupee",color:pred!==null?"var(--color-text-success)":"var(--color-text-tertiary)"})
+    ),
+
+    e("div",{style:{display:"flex",borderBottom:"0.5px solid var(--color-border-tertiary)",marginBottom:"1.5rem"}},
+      tabBtn("data","ti-id-badge","Employee data"),
+      tabBtn("model","ti-cpu","Model"),
+      tabBtn("predict","ti-sparkles","Predict salary")
+    ),
+
+    // ── DATA TAB
+    tab==="data"&&e("div",null,
+      e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem"}},
+        e("span",{style:{fontSize:13,color:"var(--color-text-secondary)"}},`Employee records · ${records.length} entries`),
+        e("button",{onClick:openCreate,style:{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",fontSize:13,fontWeight:500,background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-secondary)",borderRadius:"var(--border-radius-md)",cursor:"pointer",color:"var(--color-text-primary)"}},
+          e("i",{className:"ti ti-plus",style:{fontSize:16},"aria-hidden":"true"})," Add employee")
+      ),
+      showForm&&e("div",{style:{background:"var(--color-background-secondary)",border:"0.5px solid var(--color-border-secondary)",borderRadius:"var(--border-radius-lg)",padding:"1rem 1.25rem",marginBottom:"1rem"}},
+        e("p",{style:{margin:"0 0 0.75rem",fontSize:13,fontWeight:500,color:"var(--color-text-primary)"}},
+          e("i",{className:`ti ${editId?"ti-edit":"ti-plus"}`,style:{fontSize:16,marginRight:6,verticalAlign:"-2px"},"aria-hidden":"true"}),
+          editId?`Editing record #${editId}`:"New employee record"
+        ),
+        e("div",{style:{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:12}},
+          e("div",null,e("label",{style:{display:"block",fontSize:11,color:"var(--color-text-secondary)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}},"Experience (years)"),
+            e("input",{type:"number",min:"0",max:"40",value:form.experience,onChange:ev=>setForm(f=>({...f,experience:ev.target.value})),placeholder:"0",style:{width:"100%",fontFamily:"var(--font-mono)",fontSize:13}})),
+          e("div",null,e("label",{style:{display:"block",fontSize:11,color:"var(--color-text-secondary)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}},"Education"),
+            e("select",{value:form.education,onChange:ev=>setForm(f=>({...f,education:ev.target.value})),style:{width:"100%",fontSize:13}},
+              ...[1,2,3,4,5].map(v=>e("option",{key:v,value:v},EDUS[v])))),
+          e("div",null,e("label",{style:{display:"block",fontSize:11,color:"var(--color-text-secondary)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}},"Skills score (1–10)"),
+            e("input",{type:"number",min:"1",max:"10",value:form.skills,onChange:ev=>setForm(f=>({...f,skills:ev.target.value})),placeholder:"1–10",style:{width:"100%",fontFamily:"var(--font-mono)",fontSize:13}})),
+          e("div",null,e("label",{style:{display:"block",fontSize:11,color:"var(--color-text-secondary)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}},"Performance (1–5)"),
+            e("select",{value:form.performance,onChange:ev=>setForm(f=>({...f,performance:ev.target.value})),style:{width:"100%",fontSize:13}},
+              ...[1,2,3,4,5].map(v=>e("option",{key:v,value:v},v+" – "+PERF_L[v])))),
+          e("div",null,e("label",{style:{display:"block",fontSize:11,color:"var(--color-text-secondary)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}},"Department"),
+            e("select",{value:form.department,onChange:ev=>setForm(f=>({...f,department:ev.target.value})),style:{width:"100%",fontSize:13}},
+              ...[1,2,3,4,5].map(v=>e("option",{key:v,value:v},DEPTS[v])))),
+          e("div",null,e("label",{style:{display:"block",fontSize:11,color:"var(--color-text-secondary)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}},"Salary (₹ LPA)"),
+            e("input",{type:"number",min:"1",value:form.salary,onChange:ev=>setForm(f=>({...f,salary:ev.target.value})),placeholder:"e.g. 5",style:{width:"100%",fontFamily:"var(--font-mono)",fontSize:13}}))
+        ),
+        e("div",{style:{display:"flex",gap:8,marginTop:"0.875rem"}},
+          e("button",{onClick:saveRecord,disabled:!fv,style:{padding:"8px 18px",fontSize:13,fontWeight:500,background:fv?"var(--color-text-primary)":"var(--color-background-tertiary)",color:fv?"var(--color-background-primary)":"var(--color-text-tertiary)",border:"none",borderRadius:"var(--border-radius-md)",cursor:fv?"pointer":"not-allowed"}},editId?"Update":"Create"),
+          e("button",{onClick:cancelForm,style:{padding:"8px 18px",fontSize:13,background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:"var(--border-radius-md)",cursor:"pointer",color:"var(--color-text-secondary)"}},"Cancel")
+        )
+      ),
+      e("div",{style:{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-lg)",overflow:"hidden"}},
+        e("div",{style:{overflowX:"auto"}},
+          e("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:13}},
+            e("thead",null,e("tr",{style:{background:"var(--color-background-secondary)"}},
+              ...["#","Exp","Education","Skills","Perf","Department","Salary (LPA)",""].map(h=>
+                e("th",{key:h,style:{padding:"10px 11px",textAlign:"left",fontSize:11,textTransform:"uppercase",letterSpacing:"0.06em",color:"var(--color-text-secondary)",fontWeight:500,borderBottom:"0.5px solid var(--color-border-tertiary)"}},h))
+            )),
+            e("tbody",null,...records.map(r=>
+              e("tr",{key:r.id,style:{background:editId===r.id?"var(--color-background-info)":"transparent"}},
+                e("td",{style:{...tdS,...monoS,color:"var(--color-text-tertiary)",fontSize:12}},r.id),
+                e("td",{style:{...tdS,...monoS}},r.experience===0?e("span",{style:{color:"var(--color-text-info)",fontWeight:500}},"Fresher"):r.experience+"y"),
+                e("td",{style:tdS},e("span",{style:{fontSize:12,color:"var(--color-text-secondary)"}},EDUS[r.education])),
+                e("td",{style:{...tdS,...monoS}},r.skills+"/10"),
+                e("td",{style:tdS},e("span",{style:{fontSize:12,fontWeight:500,color:PERF_C[r.performance]}},PERF_L[r.performance])),
+                e("td",{style:tdS},e("span",{style:{fontSize:12,fontWeight:500,color:DEPT_C[r.department]}},DEPTS[r.department])),
+                e("td",{style:{...tdS,...monoS,fontWeight:500,color:"var(--color-text-success)"}},"₹"+r.salary+" L"),
+                e("td",{style:{...tdS,whiteSpace:"nowrap"}},
+                  e("button",{onClick:()=>openEdit(r),"aria-label":`Edit ${r.id}`,style:{padding:"4px 10px",fontSize:13,background:"none",border:"0.5px solid var(--color-border-secondary)",borderRadius:6,cursor:"pointer",marginRight:6,color:"var(--color-text-secondary)"}},e("i",{className:"ti ti-edit",style:{fontSize:14},"aria-hidden":"true"})),
+                  e("button",{onClick:()=>del(r.id),"aria-label":`Delete ${r.id}`,style:{padding:"4px 10px",fontSize:13,background:"none",border:"0.5px solid var(--color-border-danger)",borderRadius:6,cursor:"pointer",color:"var(--color-text-danger)"}},e("i",{className:"ti ti-trash",style:{fontSize:14},"aria-hidden":"true"}))
+                )
+              )
+            ))
+          )
+        )
+      ),
+      e("p",{style:{fontSize:12,color:"var(--color-text-tertiary)",marginTop:8}},"Salary in ₹ lakhs per annum · Performance: 1 = poor → 5 = excellent · Skills: 1 → 10")
+    ),
+
+    // ── MODEL TAB
+    tab==="model"&&e("div",{style:{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-lg)",padding:"1.25rem"}},
+      e("div",{style:{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:"1rem",flexWrap:"wrap"}},
+        e("div",null,
+          e("h3",{style:{margin:0,fontSize:16,fontWeight:500}},"Multiple linear regression"),
+          e("p",{style:{margin:"4px 0 0",fontSize:13,color:"var(--color-text-secondary)"}},"Normal equation · θ = (XᵀX)⁻¹Xᵀy · "+records.length+" employee records")
+        ),
+        e("button",{onClick:handleTrain,style:{display:"flex",alignItems:"center",gap:6,padding:"9px 18px",fontSize:13,fontWeight:500,background:"var(--color-text-primary)",color:"var(--color-background-primary)",border:"none",borderRadius:"var(--border-radius-md)",cursor:"pointer",flexShrink:0}},
+          e("i",{className:"ti ti-player-play",style:{fontSize:16},"aria-hidden":"true"})," Train model")
+      ),
+      trainErr&&e("div",{style:{padding:"10px 14px",background:"var(--color-background-danger)",border:"0.5px solid var(--color-border-danger)",borderRadius:"var(--border-radius-md)",fontSize:13,color:"var(--color-text-danger)",marginBottom:"1rem"}},trainErr),
+      !model&&!trainErr&&e("div",{style:{textAlign:"center",padding:"3rem 0",color:"var(--color-text-tertiary)",fontSize:13}},
+        e("i",{className:"ti ti-brain",style:{fontSize:40,display:"block",marginBottom:12},"aria-hidden":"true"}),
+        `Click "Train model" to discover what drives salaries across ${records.length} employees.`
+      ),
+      model&&e("div",null,
+        e("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:12,marginBottom:"1.5rem"}},
+          ...[["R² score",(model.r2*100).toFixed(2)+"%",model.r2>0.9?"var(--color-text-success)":"var(--color-text-warning)"],
+              ["RMSE","₹"+model.rmse.toFixed(2)+" L","var(--color-text-primary)"],
+              ["Samples",""+records.length,"var(--color-text-primary)"],
+              ["Floor","₹"+FLOOR+" LPA","var(--color-text-info)"]].map(([label,value,color])=>
+            e("div",{key:label,style:{background:"var(--color-background-secondary)",borderRadius:"var(--border-radius-md)",padding:"0.875rem"}},
+              e("div",{style:{fontSize:12,color:"var(--color-text-secondary)",marginBottom:4}},label),
+              e("div",{style:{fontSize:20,fontWeight:500,fontFamily:"var(--font-mono)",color}},value)
+            )
+          )
+        ),
+        e("div",{style:{marginBottom:4,display:"flex",justifyContent:"space-between"}},
+          e("span",{style:{fontSize:12,color:"var(--color-text-secondary)",textTransform:"uppercase",letterSpacing:"0.06em"}},"R² goodness of fit"),
+          e("span",{style:{fontSize:12,fontFamily:"var(--font-mono)",color:"var(--color-text-secondary)"}},(model.r2*100).toFixed(1)+"%")
+        ),
+        e("div",{style:{height:6,background:"var(--color-background-tertiary)",borderRadius:3,marginBottom:"1.5rem"}},
+          e("div",{style:{height:"100%",background:model.r2>0.9?"#1D9E75":"#EF9F27",width:(model.r2*100)+"%",borderRadius:3}})
+        ),
+        e("div",{style:{fontSize:13,fontWeight:500,marginBottom:"0.75rem",color:"var(--color-text-primary)"}},"Feature importance · learned coefficients (θ)"),
+        ...model.theta.map((v,i)=>{
+          const maxAbs=Math.max(...model.theta.map(Math.abs));
+          const pct=(Math.abs(v)/maxAbs)*80;
+          return e("div",{key:i,style:{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderTop:"0.5px solid var(--color-border-tertiary)"}},
+            e("span",{style:{width:170,fontSize:12,color:"var(--color-text-secondary)",flexShrink:0}},FEAT_NAMES[i]),
+            e("div",{style:{flex:1,height:4,background:"var(--color-background-tertiary)",borderRadius:2}},
+              e("div",{style:{height:"100%",background:FEAT_BARS[i],width:pct+"%",borderRadius:2}})
+            ),
+            e("span",{style:{fontSize:13,fontFamily:"var(--font-mono)",fontWeight:500,color:v>0?"var(--color-text-success)":"var(--color-text-danger)",minWidth:72,textAlign:"right"}},(v>0?"+":"")+v.toFixed(3))
+          );
+        }),
+        e("div",{style:{marginTop:"1.25rem",background:"var(--color-background-secondary)",borderRadius:"var(--border-radius-md)",padding:"0.875rem",fontSize:11,fontFamily:"var(--font-mono)",color:"var(--color-text-secondary)",lineHeight:1.8,wordBreak:"break-word"}},
+          e("span",{style:{color:"var(--color-text-tertiary)"}},"salary = "),
+          model.theta[0].toFixed(2)+(model.theta[1]>=0?" + ":" − ")+Math.abs(model.theta[1]).toFixed(3)+"·exp"+(model.theta[2]>=0?" + ":" − ")+Math.abs(model.theta[2]).toFixed(3)+"·edu"+(model.theta[3]>=0?" + ":" − ")+Math.abs(model.theta[3]).toFixed(3)+"·skills"+(model.theta[4]>=0?" + ":" − ")+Math.abs(model.theta[4]).toFixed(3)+"·perf"+(model.theta[5]>=0?" + ":" − ")+Math.abs(model.theta[5]).toFixed(3)+"·dept  (floor ₹"+FLOOR+"L)"
+        )
+      )
+    ),
+
+    // ── PREDICT TAB
+    tab==="predict"&&e("div",null,
+      !model&&e("div",{style:{padding:"0.875rem 1rem",background:"var(--color-background-warning)",border:"0.5px solid var(--color-border-warning)",borderRadius:"var(--border-radius-md)",marginBottom:"1rem",fontSize:13,color:"var(--color-text-warning)",display:"flex",alignItems:"center",gap:8}},
+        e("i",{className:"ti ti-alert-triangle",style:{fontSize:16},"aria-hidden":"true"}),"Train the model first (go to the Model tab)."),
+      e("div",{style:{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:"1.25rem"}},
+        e("div",{style:{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-lg)",padding:"1.25rem"}},
+          e("h3",{style:{margin:"0 0 1rem",fontSize:15,fontWeight:500}},"Candidate profile"),
+          e(SliderRow,{k:"experience",label:"Years of experience",min:0,max:25,step:1,fmt:v=>v===0?"Fresher":v+"y"}),
+          e(SliderRow,{k:"skills",label:"Skills score",min:1,max:10,step:1}),
+          e("div",{style:{marginBottom:"0.875rem"}},
+            e("div",{style:{fontSize:12,color:"var(--color-text-secondary)",marginBottom:8}},"Education level"),
+            e("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
+              ...[1,2,3,4,5].map(v=>e(Chip,{key:v,active:predIn.education===v,color:"#534AB7",onClick:()=>{setPredIn(p=>({...p,education:v}));setPred(null);}},EDUS[v]))
+            )
+          ),
+          e("div",{style:{marginBottom:"0.875rem"}},
+            e("div",{style:{fontSize:12,color:"var(--color-text-secondary)",marginBottom:8}},"Performance rating"),
+            e("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
+              ...[1,2,3,4,5].map(v=>e(Chip,{key:v,active:predIn.performance===v,color:"#0F6E56",onClick:()=>{setPredIn(p=>({...p,performance:v}));setPred(null);}},v+" · "+PERF_L[v]))
+            )
+          ),
+          e("div",{style:{marginBottom:"1rem"}},
+            e("div",{style:{fontSize:12,color:"var(--color-text-secondary)",marginBottom:8}},"Department"),
+            e("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
+              ...[1,2,3,4,5].map(v=>e(Chip,{key:v,active:predIn.department===v,color:DEPT_C[v],onClick:()=>{setPredIn(p=>({...p,department:v}));setPred(null);}},DEPTS[v]))
+            )
+          ),
+          e("button",{onClick:doPredict,disabled:!model,style:{width:"100%",padding:"10px",fontSize:13,fontWeight:500,background:model?"var(--color-text-primary)":"var(--color-background-secondary)",color:model?"var(--color-background-primary)":"var(--color-text-tertiary)",border:"0.5px solid var(--color-border-secondary)",borderRadius:"var(--border-radius-md)",cursor:model?"pointer":"not-allowed"}},
+            e("i",{className:"ti ti-calculator",style:{fontSize:15,marginRight:6,verticalAlign:"-2px"},"aria-hidden":"true"}),"Predict salary")
+        ),
+
+        e("div",{style:{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:"var(--border-radius-lg)",padding:"1.25rem",display:"flex",flexDirection:"column"}},
+          e("h3",{style:{margin:"0 0 0.75rem",fontSize:15,fontWeight:500}},"Estimated salary"),
+          pred!==null
+            ?e("div",{style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,padding:"1rem 0"}},
+                e("span",{style:{fontSize:11,color:"var(--color-text-tertiary)",textTransform:"uppercase",letterSpacing:"0.08em"}},"Annual compensation"),
+                e("div",{style:{fontSize:48,fontWeight:500,fontFamily:"var(--font-mono)",color:"var(--color-text-success)",lineHeight:1.1}},"₹"+pred.toFixed(1)+"L"),
+                e("div",{style:{fontSize:14,color:"var(--color-text-secondary)",marginBottom:floored?"0":"1rem"}},"per annum"),
+                floored&&e("div",{style:{fontSize:11,color:"var(--color-text-info)",background:"var(--color-background-info)",border:"0.5px solid var(--color-border-info)",borderRadius:"var(--border-radius-md)",padding:"6px 12px",marginBottom:"0.75rem",marginTop:4}},"Minimum salary floor of ₹"+FLOOR+" LPA applied"),
+                e("div",{style:{width:"100%",background:"var(--color-background-secondary)",borderRadius:"var(--border-radius-md)",padding:"0.875rem"}},
+                  e("div",{style:{fontSize:11,color:"var(--color-text-tertiary)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}},"Profile summary"),
+                  e("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"4px 12px"}},
+                    ...[
+                      ["Experience",predIn.experience===0?"Fresher":predIn.experience+"y"],
+                      ["Education",EDUS[predIn.education]],
+                      ["Skills",predIn.skills+"/10"],
+                      ["Performance",PERF_L[predIn.performance]],
+                      ["Department",DEPTS[predIn.department]],
+                    ].map(([k,v])=>e("div",{key:k,style:{display:"flex",justifyContent:"space-between",fontSize:12,padding:"2px 0"}},
+                      e("span",{style:{color:"var(--color-text-secondary)"}},k),
+                      e("span",{style:{fontFamily:"var(--font-mono)",fontWeight:500,color:"var(--color-text-primary)",fontSize:11}},v)
+                    ))
+                  )
+                )
+              )
+            :e("div",{style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,color:"var(--color-text-tertiary)",fontSize:13,textAlign:"center",padding:"2rem 0"}},
+                e("i",{className:"ti ti-currency-rupee",style:{fontSize:40,display:"block"},"aria-hidden":"true"}),
+                model?"Configure the profile above and click Predict":"Train the model first"
+              )
+        )
+      )
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root3")).render(e(App));
+</script>
